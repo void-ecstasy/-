@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>在线答题系统</title>
+    <style>
+        .question { margin: 20px; padding: 15px; border: 1px solid #ddd; }
+        .correct { background: #e6ffe6; }
+        .wrong { background: #ffe6e6; }
+        .answer { color: #2c7; font-weight: bold; }
+        #quizSelector {
+        margin: 20px;
+        padding: 8px 15px;
+        border: 1px solid #2c7;
+        border-radius: 4px;
+        background: #f5fff5;
+        }
+    </style>
+</head>
+<body>
+    <select id="quizSelector" onchange="changeQuiz()">
+        <option value="接入网">接入网</option>
+        <option value="安全生产考题">安全生产考题</option>
+        <option value="维护内控考题">维护内控考题</option>
+        <option value="网络和数据安全考题">网络和数据安全考题</option>
+    </select>
+    <div id="quizContainer"></div>
+    <button onclick="submitAnswers()">提交答卷</button>
+
+
+    <script>
+        let questions = [];
+        let selectedAnswers = {};
+        // 修改全局变量
+        let currentQuiz = '接入网'; // 默认题库
+
+        // 新增题库切换函数
+        function changeQuiz() {
+            const selector = document.getElementById('quizSelector');
+            currentQuiz = selector.value;
+            clearQuiz();
+            loadQuestions();
+        }
+
+        // 清空现有题目
+        function clearQuiz() {
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = '';
+            selectedAnswers = {};
+            localStorage.removeItem('quizProgress');
+        }
+
+        // 修改加载函数（原loadQuestions函数）
+        async function loadQuestions() {
+            try {
+                const response = await fetch(`${currentQuiz}.json`);
+                const data = await response.json();
+
+                // 清空原有题目数据
+                questions = Object.entries(data)
+                    .sort(() => Math.random() - 0.5)
+                    .slice(0, 60);
+
+                renderQuiz();
+                restoreSelections();
+            } catch (error) {
+                console.error('题库加载失败:', error);
+                alert('题库加载失败，请检查文件是否存在！');
+            }
+        }
+
+        // 渲染题目
+        function renderQuiz() {
+            const container = document.getElementById('quizContainer');
+            questions.forEach(([qText, answer], index) => {
+                const [question, ...options] = qText.split('\n');
+                const isMulti = qText.includes('(多选题)');
+
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question';
+                questionDiv.innerHTML = `
+                    <h4>${index+1}. ${question}</h4>
+                    ${options.map((opt, i) => `
+                        <label>
+                            <input type="${isMulti ? 'checkbox' : 'radio'}"
+                                   name="q${index}"
+                                   value="${String.fromCharCode(65+i)}">
+                            ${opt}
+                        </label><br>
+                    `).join('')}
+                `;
+                container.appendChild(questionDiv);
+            });
+        }
+
+        // 在renderQuiz后增加恢复逻辑
+        function restoreSelections() {
+            const saved = JSON.parse(localStorage.getItem('quizProgress') || '{}');
+            Object.entries(saved).forEach(([key, val]) => {
+                const index = key.replace('q','');
+                val.split('').forEach(char => {
+                    const selector = `input[name="q${index}"][value="${char}"]`;
+                    const input = document.querySelector(selector);
+                    if (input) input.checked = true;
+                });
+            });
+        }
+
+
+        // 提交批改
+        function submitAnswers() {
+            // 保存当前进度
+            const formData = {};
+            document.querySelectorAll('.question').forEach((qDiv, index) => {
+                const checked = Array.from(qDiv.querySelectorAll('input:checked'))
+                    .map(input => input.value).sort().join('');
+                formData[index] = checked;
+            });
+            localStorage.setItem('quizResult', JSON.stringify(formData)); //
+
+            // 批改逻辑优化
+            questions.forEach(([qText, correct], index) => {
+                const qDiv = document.getElementsByClassName('question')[index];
+                const userAnswer = (formData[index] || '').toUpperCase();
+
+                // 添加批改标识
+                const marker = document.createElement('div');
+                marker.className = 'answer';
+                marker.innerHTML = `正确答案：${correct}`;
+                qDiv.appendChild(marker);
+
+                // 保持原有选项状态
+                qDiv.classList.add(correct === userAnswer ? 'correct' : 'wrong');
+            });
+        }
+
+        // 在handleChange事件中增加存储逻辑
+        function handleChange() {
+            const formData = {};
+            document.querySelectorAll('.question').forEach((qDiv, index) => {
+                const checked = Array.from(qDiv.querySelectorAll('input:checked'))
+                    .map(input => input.value).join('');
+                formData[`q${index}`] = checked;
+            });
+            localStorage.setItem('quizProgress', JSON.stringify(formData)); //
+        }
+
+        // 初始化
+        loadQuestions();
+    </script>
+</body>
+</html>
